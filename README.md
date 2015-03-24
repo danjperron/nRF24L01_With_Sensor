@@ -7,7 +7,6 @@ Arduino pin out
   2   DHT22     DATA with a 4k7 pull-up resistor
   4   DHT22     POWER  I use IO pin to reduce power
   GND DHT22     GND
-  
   3   nRF24L01  IRQ   pin 8.
   7   nRF24L01  CS    pin 4
   8   nRF24L01  CE pin 3
