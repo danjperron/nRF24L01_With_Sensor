@@ -57,16 +57,17 @@ unsigned short  humidity  = 32767;
 // energy mode
 
 
-
-
-
 // Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 
 RF24 radio(8,7);
 
 #define UNIT_ID 0xc3
 
+const uint8_t MasterPipe[5] = {0xe7,0xe7,0xe7,0xe7,0xe7};
 
-const uint64_t pipes[2] = { 0xc2c2c2c2c3 , 0xe7e7e7e7e7 };              // Radio pipe addresses for the 2 nodes to communicate.
+const uint8_t SensorPipe[5]  = { UNIT_ID,0xc2,0xc2,0xc2,0xc2};
+
+
+// Radio pipe addresses for the 2 nodes to communicate.
 
 
 // Set up roles to simplify testing 
@@ -89,8 +90,8 @@ void StartRadio()
   radio.enableAckPayload();
   radio.maskIRQ(true,true,false);
   //role = role_ping_out;                  // Become the primary transmitter (ping out)
-  radio.openWritingPipe(pipes[1]);
-  radio.openReadingPipe(1,pipes[0]);
+  radio.openWritingPipe(MasterPipe);
+  radio.openReadingPipe(1,SensorPipe);
   radio.startListening();                 // Start listening
 }
 
@@ -179,6 +180,9 @@ bool readSensor(void)
 
   // power Sensor UP
   digitalWrite(DHT_POWER_PIN, HIGH);
+  pinMode(DHT_PIN, OUTPUT);
+  digitalWrite(DHT_PIN, HIGH);
+
   // Wait 2 sec
 //  delay(2000);
    sleep.pwrDownMode();
@@ -197,6 +201,8 @@ bool readSensor(void)
   // power off DHT22
   
   digitalWrite(DHT_POWER_PIN,LOW);
+  pinMode(DHT_PIN, OUTPUT);
+  digitalWrite(DHT_PIN, LOW);
   
   return (rcode == DHTLIB_OK);
 }     
