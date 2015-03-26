@@ -19,7 +19,7 @@ from struct import *
 STRUCT_TYPE_GETDATA=0
 STRUCT_TYPE_INIT=1
 STRUCT_TYPE_DHT22=2
-
+STRUCT_TYPE_DS18B20=3
 
 class Logger(object):
   def __init__(self, filename="RFLog.txt"):
@@ -38,6 +38,12 @@ sys.stdout = Logger()
 class DHT22Data:
     time = None
     humidity = 0
+    temperature =0
+    voltage=0
+    valid=False
+
+class DS18B20Data:
+    time = None
     temperature =0
     voltage=0
     valid=False
@@ -61,6 +67,8 @@ class RF_Device:
        buffer += ':{:02X}'.format(self.deviceAddress[i])   
      return buffer
 
+
+
   def unpackDHT22Data(self , buffer):
      dht22 =  DHT22Data
 
@@ -74,6 +82,21 @@ class RF_Device:
         dht22.temperature = self.rdata[7]/10.0
         dht22.humidity = self.rdata[8]
         return dht22
+     except:
+        return None
+
+  def unpackDS18B20Data(self , buffer):
+     ds18b20 =  DS18B20Data
+
+     if len(buffer) != 13:
+         return None
+     try:
+        self.rdata = unpack('<sBBBLBHH',''.join(map(chr,buffer)))
+        ds18b20.time = self.rdata[4]
+        ds18b20.valid = self.rdata[5]!=0
+        ds18b20.voltage = self.rdata[6]/1000.0
+        ds18b20.temperature = self.rdata[7]/100.0
+        return ds18b20
      except:
         return None
 
@@ -110,12 +133,21 @@ class RF_Device:
              print("Sensor {} - {} - Just boot".format(self.readSensorAddress(),time.ctime()))
              validFlag=True
            if in_buffer[2] == STRUCT_TYPE_DHT22:
-             dht22 = self.unpackDHT22Data(in_buffer)
-             if dht22 != None:
-               if dht22.valid:
-                 print("Sensor {} - {}   VCC:{}V T:{}C H:{}%".format(self.readSensorAddress(),time.ctime(dht22.time),dht22.voltage,dht22.temperature,dht22.humidity))
+             probe = self.unpackDHT22Data(in_buffer)
+             if probe != None:
+               if probe.valid:
+                 print("Sensor {} - {} VCC:{}V - DHT22   T:{:.2f} C H:{} %".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage,probe.temperature,probe.humidity))
                else:
-                 print("Sensor {} - {}  VCC:{}V Unable to read DHT22 sensor".format(self.readSensorAddress(),time.ctime(dht22.time),dht22.voltage))
+                 print("Sensor {} - {} VCC:{}V - DHT22   Unable to read".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
+               validFlag=True
+
+           if in_buffer[2] == STRUCT_TYPE_DS18B20:
+             probe = self.unpackDS18B20Data(in_buffer)
+             if probe != None:
+               if probe.valid:
+                 print("Sensor {} - {} VCC:{}V - DS18B20 T:{} C".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage,probe.temperature))
+               else:
+                 print("Sensor {} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
                validFlag=True
 
          
@@ -131,7 +163,8 @@ class RF_Device:
 
 masterAddress = [0xe7, 0xe7, 0xe7, 0xe7, 0xe7]
 
-device = [RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],10)]
+device = [RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],10),
+	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc4],10)]
 
 
 
