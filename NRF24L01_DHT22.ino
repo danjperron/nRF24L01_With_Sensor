@@ -7,6 +7,33 @@
  
  Read DHT22 sensor using a nRF24L01 sensor base on J.Coliz code
  
+March 29,2015
+Version 0.01
+DTH22 doesn't work very well under 2.7V. Supply will be 4.5V 
+- Put Back LE33 regulator but the power input  will be on one Arduino Pin.
+
+
+Arduino Pin
+
+
+0 - Serial RX
+1 - Serial TX
+2 - DHT22 Data
+3 - nRF24L01 IRQ  (not used)DHT22 POWER 
+4 - DHT22 Power
+5 - nRF24L01 Power (to LE33cz regulator).
+6 -
+7 - nRF24L01 CS
+8 - nRF24L01 CE
+9 - 
+10 -
+11 - nRF24L01 MOSI
+12 - nRF24L01 MISO
+13 - nRF24L01 SCK
+
+
+
+
 */
 
 
@@ -32,6 +59,8 @@
  */
 
 
+
+
 #include <SPI.h>
 #include <Sleep_n0m1.h>
 #include "nRF24L01.h"
@@ -43,7 +72,7 @@
 #define DHT_PIN 2
 #define DHT_POWER_PIN 4
 
-
+#define RF24_POWER_PIN 5
 //DHT22 class
 dht DHT;
 Sleep sleep;
@@ -60,7 +89,7 @@ unsigned short  humidity  = 32767;
 // Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 
 RF24 radio(8,7);
 
-#define UNIT_ID 0xc3
+#define UNIT_ID 0xc4
 
 const uint8_t MasterPipe[5] = {0xe7,0xe7,0xe7,0xe7,0xe7};
 
@@ -76,11 +105,21 @@ boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
 unsigned long Count=0;
 
 
+void StopRadio()
+{
+  pinMode(RF24_POWER_PIN,OUTPUT);
+  digitalWrite(RF24_POWER_PIN,LOW);
+}
+
+
+
 
 void StartRadio()
 {
+  pinMode(RF24_POWER_PIN,OUTPUT);
+  digitalWrite(RF24_POWER_PIN,HIGH);
+  delay(50);  
   // Setup and configure rf radio
-  //radio.setChannel(0x60);
   radio.begin();                          // Start up the radio
   radio.setPayloadSize(32);
   radio.setChannel(0x4e);
@@ -291,6 +330,7 @@ unsigned long deltaTime;
    if(cycle== ModeWait)
      {
        radio.powerDown();       
+       StopRadio();
        sleep.pwrDownMode();
        sleep.sleepDelay(sleepTime);
        cycle = ModeWriteData;
