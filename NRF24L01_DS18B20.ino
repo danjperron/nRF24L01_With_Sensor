@@ -55,6 +55,8 @@
 #define DS18B20_PIN 2
 #define DS18B20_POWER_PIN 4
 
+#define RF24_POWER_PIN 5
+
 
 
 //assuming one sensor per device
@@ -75,7 +77,7 @@ unsigned short  humidity  = 32767;
 
 // energy mode
 
-#define DISABLE_SLEEP
+//#define DISABLE_SLEEP
 
 ///////////////   radio /////////////////////
 // Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 
@@ -83,9 +85,9 @@ RF24 radio(8,7);
 
 #define UNIT_ID 0xc3
 
-const uint8_t MasterPipe[5] = {0xe7,0xe7,0xe7,0xe7,0xe7};
+const uint8_t MasterPipe[6] = {0xe7,0xe7,0xe7,0xe7,0xe7,0};
 
-const uint8_t SensorPipe[5]  = { UNIT_ID,0xc2,0xc2,0xc2,0xc2};
+const uint8_t SensorPipe[6]  = { UNIT_ID,0xc2,0xc2,0xc2,0xc2,0};
 
 
 // Radio pipe addresses for the 2 nodes to communicate.
@@ -97,14 +99,22 @@ boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
 unsigned long Count=0;
 
 
+void StopRadio()
+{
+  pinMode(RF24_POWER_PIN,OUTPUT);
+  digitalWrite(RF24_POWER_PIN,LOW);
+}
+
 
 void StartRadio()
 {
-  // Setup and configure rf radio
-  //radio.setChannel(0x60);
+  pinMode(RF24_POWER_PIN,OUTPUT);
+  digitalWrite(RF24_POWER_PIN,HIGH);
+  delay(50);  
   radio.begin();                          // Start up the radio
   radio.setPayloadSize(32);
   radio.setChannel(0x4e);
+  radio.setDataRate(RF24_1MBPS);
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
   radio.setRetries(15,15);   // Max delay between retries & number of retries
   radio.enableDynamicPayloads();
@@ -346,7 +356,8 @@ unsigned long deltaTime;
    
    if(cycle== ModeWait)
      {
-       radio.powerDown();       
+       radio.powerDown();
+       StopRadio();       
 
  #ifdef DISABLE_SLEEP
        delay(sleepTime);
@@ -378,7 +389,10 @@ unsigned long deltaTime;
          Txmdata.temperature = (short) floor(celsius * 100);
          Txmdata.valid = 1;
        }
-      
+       
+       // power down sensor
+      digitalWrite(DS18B20_POWER_PIN, LOW);      
+
      StartRadio(); 
      radio.writeAckPayload(1,&Txmdata,sizeof(TxmDS18B20PacketStruct));
      cycle=ModeListen;     
