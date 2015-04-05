@@ -20,6 +20,7 @@ STRUCT_TYPE_GETDATA=0
 STRUCT_TYPE_INIT=1
 STRUCT_TYPE_DHT22=2
 STRUCT_TYPE_DS18B20=3
+STRUCT_TYPE_MAX6675=4
 
 class Logger(object):
   def __init__(self, filename="RFLog.txt"):
@@ -43,6 +44,12 @@ class DHT22Data:
     valid=False
 
 class DS18B20Data:
+    time = None
+    temperature =0
+    voltage=0
+    valid=False
+
+class MAX6675Data:
     time = None
     temperature =0
     voltage=0
@@ -100,6 +107,21 @@ class RF_Device:
      except:
         return None
 
+  def unpackMAX6675Data(self , buffer):
+     max6675  =  MAX6675Data
+
+     if len(buffer) != 13:
+         return None
+     try:
+        self.rdata = unpack('<sBBBLBHH',''.join(map(chr,buffer)))
+        max6675.time = self.rdata[4]
+        max6675.valid = self.rdata[5]!=0
+        max6675.voltage = self.rdata[6]/1000.0
+        max6675.temperature = self.rdata[7]/4.0
+        return max6675
+     except:
+        return None
+
   def getData(self):
     if( not self.isTimeOut()):
        return None
@@ -150,6 +172,15 @@ class RF_Device:
                  print("Sensor {} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
                validFlag=True
 
+           if in_buffer[2] == STRUCT_TYPE_MAX6675:
+             probe = self.unpackMAX6675Data(in_buffer)
+             if probe != None:
+               if probe.valid:
+                 print("Sensor {} - {} VCC:{}V - MAX6675 T:{} C".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage,probe.temperature))
+               else:
+                 print("Sensor {} - {} VCC:{}V - MAX6675 Unable to read sensor".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
+               validFlag=True
+
          
 #       except:
 #         print("Unable to unpack!Bad packet")
@@ -163,8 +194,9 @@ class RF_Device:
 
 masterAddress = [0xe7, 0xe7, 0xe7, 0xe7, 0xe7]
 
-device = [RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],10),
-	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc4],10)]
+device = [RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],60),
+	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc4],60),
+	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc5],60)]
 
 
 
