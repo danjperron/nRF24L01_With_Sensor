@@ -101,6 +101,8 @@ unsigned long Count=0;
 
 void StopRadio()
 {
+  Serial.print("*** STOP RADIO ***\n");
+  delay(100);
   pinMode(RF24_POWER_PIN,OUTPUT);
   digitalWrite(RF24_POWER_PIN,LOW);
 }
@@ -108,6 +110,8 @@ void StopRadio()
 
 void StartRadio()
 {
+  Serial.print("*** START RADIO ***\n");
+
   pinMode(RF24_POWER_PIN,OUTPUT);
   digitalWrite(RF24_POWER_PIN,HIGH);
   delay(50);  
@@ -223,22 +227,25 @@ bool readSensor(void)
   pinMode(DS18B20_PIN, INPUT);
 
 #ifdef DISABLE_SLEEP
-  // Wait 2 sec
-    delay(1000);
+  // Wait 200 ms
+    delay(200);
 #else
    sleep.pwrDownMode();
-   sleep.sleepDelay(1000);
-#endif
-  // Now let's read the sensor twice
-  // since the first one will be bad
-  
+   sleep.sleepDelay(200);
+#endif  
    // start conversion
    Serial.println("CV");
    ds.reset();
    ds.write(0xcc); // skip rom command
    ds.write(0x44, 1); // start conversion
-   delay(1000);
-  
+#ifdef DISABLE_SLEEP
+  // Wait 200 ms
+    delay(800);
+#else
+   sleep.pwrDownMode();
+   sleep.sleepDelay(800);
+#endif  
+   
    Serial.println("read");
    present = ds.reset(); 
    ds.write(0xcc);
@@ -327,10 +334,10 @@ unsigned long deltaTime;
    {
      // put arduino on sleep until we got 
      // an interrupt from RF24 trasnmitter
- #ifndef DISABLE_SLEEP
-     sleep.pwrDownMode();
-     sleep.sleepDelay(100);
-#endif
+// #ifndef DISABLE_SLEEP
+//     sleep.pwrDownMode();
+//     sleep.sleepDelay(100);
+//#endif
      if(radio.available()) 
       {
         int rcv_size= radio.getDynamicPayloadSize();
@@ -343,9 +350,14 @@ unsigned long deltaTime;
         PrintHex(pt,rcv_size);
         Serial.print("\n");        
         currentDelay = millis();
+       #ifdef DISABLE_SLEEP
+        delay(200);
+       #endif       
+        
+        
         if(RcvData.nextTimeReading > 50)
           { 
-           sleepTime =  RcvData.nextTimeReading*100 - 5000UL;
+           sleepTime =  RcvData.nextTimeReading*100 - 2000; 
            cycle = ModeWait;
           }
           else

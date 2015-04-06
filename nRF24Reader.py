@@ -61,12 +61,24 @@ class RF_Device:
     self.nextTime=nextTime;
     self.lastConnectionTime= time.time()
     self.nextConnectionTime= self.lastConnectionTime
+    self.preConnectionDelay = 3.0
+    self.postConnectionDelay = 5.0
+    self.Retry = 0
+#    self.RetryTimeLapse = 0.1
     self.xdata = [0,0,0]
     self.rdata = ''
 
-  def isTimeOut(self):
-    return (time.time() > self.nextConnectionTime)
 
+
+  def isTimeOut(self):
+    #check if we need to test communication
+    if (time.time() + self.preConnectionDelay) > self.nextConnectionTime:
+          return True
+
+    if self.Retry>0:
+          return True
+
+    return False      
 
   def readSensorAddress(self):
      buffer = '{:02X}'.format(self.deviceAddress[0])
@@ -124,19 +136,25 @@ class RF_Device:
 
   def getData(self):
     if( not self.isTimeOut()):
-       return None
-    
+       return 
+
 #    print("timeout={}".format(self.nextTime))
-    self.nextConnectionTime += self.nextTime
     #buildpacket
     packet = '*'
     packet += chr(10)  #get packet size
     packet += chr(STRUCT_TYPE_GETDATA)
     packet += chr(0)   #0 mean master
     packet += pack('<L', numpy.uint32(time.time()))  #get current time
-    packet += pack('<H', numpy.uint16(self.nextTime *10))  #get next time reading
+
+    #calculate next time sampling
     
-        
+    stepNextTime = self.nextConnectionTime + self.nextTime - time.time(); 
+
+    stepu16 = numpy.uint16((stepNextTime) * 10)
+    
+    packet += pack('<H', stepu16)  #get next time reading
+    
+#    print("step {} unpack{}".format(stepu16,packet))        
  #   print("send : {}".format(list(packet)))
 
     radio.openWritingPipe(self.deviceAddress)
@@ -158,41 +176,46 @@ class RF_Device:
              probe = self.unpackDHT22Data(in_buffer)
              if probe != None:
                if probe.valid:
-                 print("Sensor {} - {} VCC:{}V - DHT22   T:{:.2f} C H:{} %".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage,probe.temperature,probe.humidity))
+                 print("Sensor {} R:{} - {} VCC:{}V - DHT22   T:{:.2f} C H:{} %".format(self.readSensorAddress(),self.Retry,time.ctime(),probe.voltage,probe.temperature,probe.humidity))
                else:
-                 print("Sensor {} - {} VCC:{}V - DHT22   Unable to read".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
+                 print("Sensor {} R:{} - {} VCC:{}V - DHT22   Unable to read".format(self.readSensorAddress(),self.Retry,time.ctime(),probe.voltage))
                validFlag=True
 
            if in_buffer[2] == STRUCT_TYPE_DS18B20:
              probe = self.unpackDS18B20Data(in_buffer)
              if probe != None:
                if probe.valid:
-                 print("Sensor {} - {} VCC:{}V - DS18B20 T:{} C".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage,probe.temperature))
+                 print("Sensor {} R:{} - {} VCC:{}V - DS18B20 T:{} C".format(self.readSensorAddress(),self.Retry,time.ctime(),probe.voltage,probe.temperature))
                else:
-                 print("Sensor {} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
+                 print("Sensor {} R:{} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),self.Retry,time.ctime(),probe.voltage))
                validFlag=True
 
            if in_buffer[2] == STRUCT_TYPE_MAX6675:
              probe = self.unpackMAX6675Data(in_buffer)
              if probe != None:
                if probe.valid:
-                 print("Sensor {} - {} VCC:{}V - MAX6675 T:{} C".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage,probe.temperature))
+                 print("Sensor {} R:{} - {} VCC:{}V - MAX6675 T:{} C".format(self.readSensorAddress(),self.Retry,time.ctime(),probe.voltage,probe.temperature))
                else:
-                 print("Sensor {} - {} VCC:{}V - MAX6675 Unable to read sensor".format(self.readSensorAddress(),time.ctime(probe.time),probe.voltage))
+                 print("Sensor {} R:{} - {} VCC:{}V - MAX6675 Unable to read sensor".format(self.readSensorAddress(),self.Retry,time.ctime(),probe.voltage))
                validFlag=True
 
-         
-#       except:
-#         print("Unable to unpack!Bad packet")
-
-      if not validFlag:
+           self.Retry=0
+           self.nextConnectionTime += self.nextTime
+#           print("Next time {} in sec{}".format(time.ctime(self.nextConnectionTime),stepNextTime))
+           if not validFlag:
             print("Sensor {} - {}  Invalid packet!".format(self.readSensorAddress(),time.ctime()))
      else:
-            print("Sensor {} - {}  time out!".format(self.readSensorAddress(),time.ctime()))
+            #time out retry mode then
+            self.Retry +=1
+            if time.time() > (self.nextConnectionTime +  self.postConnectionDelay): 
+               self.Retry =0
+               self.nextConnectionTime += self.nextTime
+               print("Sensor {} - {}  time out!".format(self.readSensorAddress(),time.ctime()))
 
 
 
 masterAddress = [0xe7, 0xe7, 0xe7, 0xe7, 0xe7]
+
 
 device = [RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],60),
 	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc4],60),
@@ -203,7 +226,7 @@ device = [RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],60),
 radio = NRF24(GPIO, spidev.SpiDev())
 radio.begin(0, 17)
 time.sleep(1)
-radio.setRetries(15,15)
+radio.setRetries(7,3)
 radio.setPayloadSize(32)
 radio.setChannel(78)
 
@@ -226,7 +249,6 @@ try:
    for i in  device:
      if(i.isTimeOut()):
       i.getData();
- 
    time.sleep(0.01)
 
 except KeyboardInterrupt:

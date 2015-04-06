@@ -322,10 +322,6 @@ unsigned long deltaTime;
    {
      // put arduino on sleep until we got 
      // an interrupt from RF24 trasnmitter
- #ifndef DISABLE_SLEEP
-     sleep.pwrDownMode();
-     sleep.sleepDelay(100);
-#endif
      if(radio.available()) 
       {
         int rcv_size= radio.getDynamicPayloadSize();

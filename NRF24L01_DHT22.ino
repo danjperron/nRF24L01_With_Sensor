@@ -301,8 +301,8 @@ unsigned long deltaTime;
    {
      // put arduino on sleep until we got 
      // an interrupt from RF24 trasnmitter
-     sleep.pwrDownMode();
-     sleep.sleepDelay(100);
+     //sleep.pwrDownMode();
+     //sleep.sleepDelay(100);
 
      if(radio.available()) 
       {
