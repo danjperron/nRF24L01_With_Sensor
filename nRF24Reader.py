@@ -61,7 +61,7 @@ class RF_Device:
     self.nextTime=nextTime;
     self.lastConnectionTime= time.time()
     self.nextConnectionTime= self.lastConnectionTime
-    self.preConnectionDelay = 3.0
+    self.preConnectionDelay = 5.0
     self.postConnectionDelay = 5.0
     self.Retry = 0
 #    self.RetryTimeLapse = 0.1
