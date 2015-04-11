@@ -100,8 +100,8 @@ const uint8_t SensorPipe[5]  = { UNIT_ID,0xc2,0xc2,0xc2,0xc2};
 
 
 // Set up roles to simplify testing 
-boolean role;                                    // The main role variable, holds the current role identifier
-boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
+//boolean role;                                    // The main role variable, holds the current role identifier
+//boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
 unsigned long Count=0;
 
 
@@ -124,7 +124,7 @@ void StartRadio()
   radio.setPayloadSize(32);
   radio.setChannel(0x4e);
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  radio.setRetries(15,15);   // Max delay between retries & number of retries
+  radio.setRetries(7,3);   // Max delay between retries & number of retries
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
   radio.maskIRQ(true,true,false);
@@ -164,7 +164,11 @@ cycleMode cycle= ModeInit;
 #define STRUCT_TYPE_GETDATA    0
 #define STRUCT_TYPE_INIT_DATA  1
 #define STRUCT_TYPE_DHT22_DATA 2
+#define STRUCT_TYPE_DS18B20_DATA 3
+#define STRUCT_TYPE_MAX6675_DATA 4
 
+#define STATUS_DATA_VALID  1
+#define STATUS_TIME_OUT    2
 
 typedef struct
 {
@@ -174,7 +178,8 @@ typedef struct
   unsigned char txmUnitId;
   unsigned long currentTime;
   unsigned short nextTimeReading;
-  char Spare[22];
+  unsigned short nextTimeOnTimeOut;
+  char Spare[20];
 }RcvPacketStruct;
 
 
@@ -184,8 +189,8 @@ typedef struct
    unsigned char structSize;
    unsigned char structType;
    unsigned char txmUnitId;
+   unsigned char  Status;
    unsigned long  stampTime;
-   unsigned char  valid;
    unsigned short voltageA2D;
    unsigned short temperature;
    unsigned short humidity;
@@ -202,6 +207,10 @@ unsigned char * pt = (unsigned char *) &RcvData;
 
 
 unsigned char rcvBuffer[32];
+unsigned short nextTimeOnTimeOut = 60;
+unsigned short waitTimeOnListen = 60;
+unsigned long  startTimeOnListen;
+unsigned char  gotTimeOut = 0;
 
 
 void PrintHex(uint8_t *data, uint8_t length) // prints 16-bit data in hex with leading zeroes
@@ -289,12 +298,13 @@ unsigned long deltaTime;
      Txmdata.structType=STRUCT_TYPE_INIT_DATA;
      Txmdata.txmUnitId = UNIT_ID;
      Txmdata.stampTime=0;
-     Txmdata.valid=0;
+     Txmdata.Status=0;
      Txmdata.temperature=0;
      Txmdata.humidity=0;
      Txmdata.voltageA2D=0;
      radio.writeAckPayload(1,&Txmdata,sizeof(TxmDHT22PacketStruct));
      cycle=ModeListen;
+     startTimeOnListen = millis();
    }
    
   if(cycle==ModeListen)
@@ -306,16 +316,27 @@ unsigned long deltaTime;
 
      if(radio.available()) 
       {
-        int rcv_size= radio.getDynamicPayloadSize();
-        radio.read( &RcvData,rcv_size);
-        Serial.print("T:" );
-        Serial.print(RcvData.currentTime);
-        Serial.print(" Next reading in (1/10 sec): ");
-        Serial.print(RcvData.nextTimeReading);
-        Serial.print("\n");
-        PrintHex(pt,rcv_size);
-        Serial.print("\n");        
-        currentDelay = millis();
+       int rcv_size = radio.getDynamicPayloadSize();
+       radio.read( &RcvData, rcv_size);
+
+       if (RcvData.header != '*')
+         return;
+       Serial.print("Received after ");
+       Serial.print((millis() - startTimeOnListen) / 1000.0);
+       Serial.print(" sec\n");
+       Serial.print("T:" );
+       Serial.print(RcvData.currentTime);
+       Serial.print(" Next reading in (1/10 sec): ");
+       Serial.print(RcvData.nextTimeReading);
+       Serial.print("\n");
+       PrintHex(pt, rcv_size);
+       Serial.print("\n");
+       currentDelay = millis();
+       #ifdef DISABLE_SLEEP
+       delay(200);
+       #endif
+       nextTimeOnTimeOut = RcvData.nextTimeOnTimeOut;
+       waitTimeOnListen = 1;
         if(RcvData.nextTimeReading > 50)
           { 
            sleepTime =  RcvData.nextTimeReading*100 - 5000UL;
@@ -324,6 +345,26 @@ unsigned long deltaTime;
           else
            cycle = ModeWriteData;
       }
+     else
+     {
+
+      deltaTime = (millis() - startTimeOnListen) / 1000;
+      // did we have time out
+      if (deltaTime > waitTimeOnListen)
+      {
+        // ok we got time out
+        Serial.print("got time out!");
+        Serial.print(deltaTime);
+        Serial.print("sec.  Sleep for ");
+        Serial.print(nextTimeOnTimeOut);
+        Serial.print("sec.\n");
+        waitTimeOnListen = 1;
+        sleepTime = (unsigned long) nextTimeOnTimeOut * 1000;
+        cycle = ModeWait;
+
+      }
+    }
+
    }
    
    
@@ -340,14 +381,14 @@ unsigned long deltaTime;
    if(cycle==ModeWriteData)
     {
       
-     Txmdata.valid=1;
+    
      Txmdata.stampTime=RcvData.currentTime;
      Txmdata.header='*';
      Txmdata.structSize= sizeof(TxmDHT22PacketStruct);
      Txmdata.structType=STRUCT_TYPE_DHT22_DATA;
      Txmdata.txmUnitId = UNIT_ID;
      Txmdata.stampTime=RcvData.currentTime + (deltaTime / 1000);
-     Txmdata.valid=0;
+     Txmdata.Status = gotTimeOut ? STATUS_TIME_OUT : 0;
      Txmdata.temperature=32767;
      Txmdata.humidity=32767;
      Txmdata.voltageA2D=readVcc();
@@ -357,12 +398,14 @@ unsigned long deltaTime;
        {
          Txmdata.temperature = (short) floor(DHT.temperature * 10.0);
          Txmdata.humidity = (short) floor(DHT.humidity);
-         Txmdata.valid = 1;
+         Txmdata.Status |=  STATUS_DATA_VALID;
        }
       
      StartRadio(); 
      radio.writeAckPayload(1,&Txmdata,sizeof(TxmDHT22PacketStruct));
-     cycle=ModeListen;     
+     startTimeOnListen = millis();
+     cycle=ModeListen;
+     gotTimeOut=0;     
     }
       
 }

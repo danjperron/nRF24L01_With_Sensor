@@ -82,8 +82,8 @@ const uint8_t SensorPipe[6]  = { UNIT_ID,0xc2,0xc2,0xc2,0xc2,0};
 
 
 // Set up roles to simplify testing 
-boolean role;                                    // The main role variable, holds the current role identifier
-boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
+//boolean role;                                    // The main role variable, holds the current role identifier
+//boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
 unsigned long Count=0;
 
 
@@ -104,7 +104,7 @@ void StartRadio()
   radio.setChannel(0x4e);
   radio.setDataRate(RF24_1MBPS);
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  radio.setRetries(15,15);   // Max delay between retries & number of retries
+  radio.setRetries(7,3);   // Max delay between retries & number of retries
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
   radio.maskIRQ(true,true,false);
@@ -147,6 +147,9 @@ cycleMode cycle= ModeInit;
 #define STRUCT_TYPE_MAX6675_DATA    4
 
 
+#define STATUS_DATA_VALID 1
+#define STATUS_TIME_OUT   2
+
 typedef struct
 {
   char header;
@@ -155,7 +158,8 @@ typedef struct
   unsigned char txmUnitId;
   unsigned long currentTime;
   unsigned short nextTimeReading;
-  char Spare[22];
+  unsigned short nextTimeOnTimeOut;
+  char Spare[20];
 }RcvPacketStruct;
 
 
@@ -165,8 +169,8 @@ typedef struct
    unsigned char structSize;
    unsigned char structType;
    unsigned char txmUnitId;
+   unsigned char Status;
    unsigned long  stampTime;
-   unsigned char  valid;
    unsigned short voltageA2D;
    unsigned short temperature;
 }TxmMAX6675PacketStruct;
@@ -182,6 +186,10 @@ unsigned char * pt = (unsigned char *) &RcvData;
 
 
 unsigned char rcvBuffer[32];
+unsigned short nextTimeOnTimeOut = 60;
+unsigned short waitTimeOnListen = 60;
+unsigned long startTimeOnListen;
+unsigned char gotTimeOut=0;
 
 
 void PrintHex(uint8_t *data, uint8_t length) // prints 16-bit data in hex with leading zeroes
@@ -310,12 +318,12 @@ unsigned long deltaTime;
      Txmdata.structType=STRUCT_TYPE_INIT_DATA;
      Txmdata.txmUnitId = UNIT_ID;
      Txmdata.stampTime=0;
-     Txmdata.valid=0;
+     Txmdata.Status=0;
      Txmdata.temperature=0;
      Txmdata.voltageA2D=0;
      radio.writeAckPayload(1,&Txmdata,sizeof(TxmMAX6675PacketStruct));
      cycle=ModeListen;
-
+     startTimeOnListen = millis();
    }
    
   if(cycle==ModeListen)
@@ -334,6 +342,8 @@ unsigned long deltaTime;
         PrintHex(pt,rcv_size);
         Serial.print("\n");        
         currentDelay = millis();
+        nextTimeOnTimeOut = RcvData.nextTimeOnTimeOut;
+        waitTimeOnListen = 1;
         if(RcvData.nextTimeReading > 50)
           { 
            sleepTime =  RcvData.nextTimeReading*100 - 2000UL; // wake the unit 2 seconds before
@@ -341,6 +351,21 @@ unsigned long deltaTime;
           }
           else
            cycle = ModeWriteData;
+      }
+      else
+      {
+       deltaTime = (millis() - startTimeOnListen) / 1000;
+       if(deltaTime > waitTimeOnListen)
+        { // ok we got tim eout
+        Serial.print("got time out!");
+        Serial.print(deltaTime);
+        Serial.print("sec.  Sleep for ");
+        Serial.print(nextTimeOnTimeOut);
+        Serial.print("sec.\n");
+        waitTimeOnListen = 1;
+        sleepTime = (unsigned long) nextTimeOnTimeOut * 1000;
+        cycle = ModeWait;
+        }
       }
    }
    
@@ -362,15 +387,13 @@ unsigned long deltaTime;
    
    if(cycle==ModeWriteData)
     {
-      
-     Txmdata.valid=1;
      Txmdata.stampTime=RcvData.currentTime;
      Txmdata.header='*';
      Txmdata.structSize= sizeof(TxmMAX6675PacketStruct);
      Txmdata.structType=STRUCT_TYPE_MAX6675_DATA;
      Txmdata.txmUnitId = UNIT_ID;
      Txmdata.stampTime=RcvData.currentTime + (deltaTime / 1000);
-     Txmdata.valid=0;
+     Txmdata.Status=gotTimeOut ? STATUS_TIME_OUT : 0;
      Txmdata.temperature=32767;
      Txmdata.voltageA2D=readVcc();
      
@@ -387,13 +410,15 @@ unsigned long deltaTime;
      if(readSensor())
        {
          Txmdata.temperature = temperature;
-         Txmdata.valid = 1;
+         Txmdata.Status |= STATUS_DATA_VALID;
        }
        StopSensor();
   
        StartRadio(); 
        radio.writeAckPayload(1,&Txmdata,sizeof(TxmMAX6675PacketStruct));
-       cycle=ModeListen;     
+       cycle=ModeListen;
+       startTimeOnListen=millis();
+       gotTimeOut=0;     
     }
       
 }

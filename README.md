@@ -16,3 +16,12 @@ Arduino pin out
   3.3V nRF24L01 VCC   pin 2
   GND nRF24L01  GND p in 1
 </pre>
+
+Needed library
+ - https://github.com/n0m1/Sleep_n0m1
+ - http://playground.arduino.cc//Main/DHTLib
+ - http://www.pjrc.com/teensy/td_libs_OneWire.html
+ - http://milesburton.com/Dallas_Temperature_Control_Library
+
+And for nRF24Reader.py
+ - https://github.com/BLavery/lib_nrf24.git
