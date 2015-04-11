@@ -231,8 +231,12 @@ class RF_Device:
            if validFlag:
              self.targetConnectionTime = self.nextConnectionTime
              self.nextConnectionTime += self.timeInterval
-             if probe.timeOut:
+
+             if probe == None:
                 self.NoAdjustmentOnNext= True
+             else:
+                if probe.timeOut:
+                  self.NoAdjustmentOnNext= True
 #             if not self.NoAdjustmentOnNext:
              if abs(timeOffset)<5:
                  self.timeOffsetAdjustment -= timeOffset / 3
