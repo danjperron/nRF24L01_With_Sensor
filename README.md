@@ -18,6 +18,7 @@ Arduino pin out
 </pre>
 
 Needed library
+ - https://github.com/maniacbug/RF24
  - https://github.com/n0m1/Sleep_n0m1
  - http://playground.arduino.cc//Main/DHTLib
  - http://www.pjrc.com/teensy/td_libs_OneWire.html
