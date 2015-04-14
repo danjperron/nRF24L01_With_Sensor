@@ -184,7 +184,7 @@ class RF_Device:
  #   print("send : {}".format(list(packet)))
 
     radio.openWritingPipe(self.deviceAddress)
-
+    probe = None
     radio.write(packet)
     if True:
      if radio.isAckPayloadAvailable():

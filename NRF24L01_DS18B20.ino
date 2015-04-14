@@ -37,8 +37,6 @@
 #include "nRF24L01.h"
 #include "RF24.h"
 #include "printf.h"
-#include <OneWire.h>
-#include "dht.h"
 
 #include <OneWire.h>
 
@@ -83,7 +81,7 @@ unsigned short  humidity  = 32767;
 // Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10
 RF24 radio(8, 7);
 
-#define UNIT_ID 0xc3
+#define UNIT_ID 0xc6
 
 const uint8_t MasterPipe[6] = {0xe7, 0xe7, 0xe7, 0xe7, 0xe7, 0};
 
@@ -97,6 +95,17 @@ const uint8_t SensorPipe[6]  = { UNIT_ID, 0xc2, 0xc2, 0xc2, 0xc2, 0};
 //boolean role;                                    // The main role variable, holds the current role identifier
 //boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
 unsigned long Count = 0;
+
+
+// because of sleep mode calibration problem
+// and I don't want to change the library
+// we will mimic the calibration
+// by disable it and enable only when we reach 0 at modulus 720
+// we will calibrate the watch dog  when we wait  for the DS18B20 conversion
+
+#define        WD_CALIB_COUNT   720
+unsigned short WDCalibrationCycle=0;
+
 
 
 void StopRadio()
@@ -139,13 +148,15 @@ void setup() {
 
   Serial.begin(57600);
   printf_begin();
-  printf("\n\rRF24/examples/GettingStarted/\n\r");
-  printf("*** PRESS 'T' to begin transmitting to the other node\n\r");
-
+  printf("\n\rRF24  DS18B20\n\r");
   StartRadio();
   radio.stopListening();
   radio.printDetails();                   // Dump the configuration of the rf unit for debugging
   radio.startListening();
+
+  // disable calibration interval by setting modulus to
+  sleep.setCalibrationInterval(1);
+
 }
 
 
@@ -240,6 +251,13 @@ bool readSensor(void)
   // Wait 200 ms
   delay(200);
 #else
+// ok let's check if we need to calibrate the watch dog timer
+  if(WDCalibrationCycle ==0)
+    sleep.setCalibrationInterval(2);  // enable watch dog calibration one every 2 sleep
+  
+  WDCalibrationCycle++;
+  WDCalibrationCycle %= WD_CALIB_COUNT;  //modulus 720 count (half day) on every minutes
+
   sleep.pwrDownMode();
   sleep.sleepDelay(200);
 #endif
@@ -252,8 +270,13 @@ bool readSensor(void)
   // Wait 200 ms
   delay(800);
 #else
+
+// ok check to calibrate sleep mode
+
+
   sleep.pwrDownMode();
   sleep.sleepDelay(800);
+  sleep.setCalibrationInterval(1);  //disable internal calibration on next sleep
 #endif
 
   Serial.println("read");
@@ -402,7 +425,7 @@ void loop(void) {
 
   if (cycle == ModeWait)
   {
-    delay(100);
+    delay(10);
     radio.powerDown();
     StopRadio();
 
