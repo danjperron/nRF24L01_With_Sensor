@@ -14,6 +14,10 @@ import binascii
 import numpy
 import sys
 from struct import *
+import paho.mqtt.client as paho
+
+client = paho.Client('RFUnit')
+client.connect('127.0.0.1')
 
 
 STRUCT_TYPE_GETDATA=0
@@ -60,7 +64,9 @@ class MAX6675Data:
     timeOut=False
 
 class RF_Device:
-  def __init__(self, deviceAddress, timeInterval=60):
+  def __init__(self, deviceAddress,mqtt=None,topic="RF_DATA", timeInterval=60):
+    self.mqtt=mqtt
+    self.mqttTopic=topic
     self.deviceAddress=deviceAddress
     self.timeInterval=timeInterval
     self.targetConnectionTime= time.time()
@@ -73,6 +79,11 @@ class RF_Device:
     self.NoAdjustmentOnNext=True
     self.lastPing= 0
     self.gotDataFlag= False
+
+  def publish(self,packet):
+    if self.mqtt != None:
+      self.mqtt.publish(self.mqttTopic,packet)
+    print(packet)
 
 
   def isScheduleUp(self):
@@ -95,8 +106,8 @@ class RF_Device:
      else:
        #set time out and return false
        self.timeOutFlag = True
-       print("Sensor {} - {} - time out".format(self.readSensorAddress(),time.ctime()))
-
+       self.publish("Sensor {} - {} - time out".format(self.readSensorAddress(),time.ctime()))
+       
      #update NextConnectionTime()
      while (self.targetConnectionTime - self.preConnectionDelay)   <= now:
         self.targetConnectionTime+= self.timeInterval
@@ -220,33 +231,34 @@ class RF_Device:
 
            if in_buffer[2] == STRUCT_TYPE_INIT:
              #sensor is valid but just boot
-             print("Sensor {} - {} - Just boot".format(self.readSensorAddress(),time.ctime()))
+           
+             self.publish("Sensor {} - {} - Just boot".format(self.readSensorAddress(),time.ctime()))
              validFlag=True
            if in_buffer[2] == STRUCT_TYPE_DHT22:
              probe = self.unpackDHT22Data(in_buffer)
              if probe != None:
                if probe.valid:
-                 print("Sensor {} D:{:.1f} O:{:.1f}  - {} VCC:{}V - DHT22   T:{:.2f} C H:{} %".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature,probe.humidity))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f}  - {} VCC:{}V - DHT22   T:{:.2f} C H:{} %".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature,probe.humidity))
                else:
-                 print("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DHT22   Unable to read".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DHT22   Unable to read".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
                validFlag=True
 
            if in_buffer[2] == STRUCT_TYPE_DS18B20:
              probe = self.unpackDS18B20Data(in_buffer)
              if probe != None:
                if probe.valid:
-                 print("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 T:{} C".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 T:{} C".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature))
                else:
-                 print("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
                validFlag=True
 
            if in_buffer[2] == STRUCT_TYPE_MAX6675:
              probe = self.unpackMAX6675Data(in_buffer)
              if probe != None:
                if probe.valid:
-                 print("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - MAX6675 T:{} C".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - MAX6675 T:{} C".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature))
                else:
-                 print("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - MAX6675 Unable to read sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - MAX6675 Unable to read sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
                validFlag=True
            
            if validFlag:
@@ -279,9 +291,12 @@ device = [
 	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc5],60),
 	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc6],60)]
 
+
+
 # space each device in time 
 delay=0
 for i in device:
+  i.mqtt=client
   i.targetConnectionTime += delay * i.timeInterval/len(device)
   print("Device {} set to {}".format(i.readSensorAddress(),time.ctime(i.targetConnectionTime)))
   delay+=1
@@ -312,10 +327,11 @@ try:
  while True:
    for i in  device:
      if i.isScheduleUp():
-        i.getData();
+        i.getData()
    time.sleep(0.005)
 
 except KeyboardInterrupt:
-    radio.stopListening();
-    radio.powerDown();
+    radio.stopListening()
+    radio.powerDown()
+    client.disconnect()
     raise
