@@ -89,7 +89,7 @@ unsigned short  humidity  = 32767;
 // Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 
 RF24 radio(8,7);
 
-#define UNIT_ID 0xc4
+#define UNIT_ID 0xc8
 
 const uint8_t MasterPipe[5] = {0xe7,0xe7,0xe7,0xe7,0xe7};
 
@@ -103,6 +103,11 @@ const uint8_t SensorPipe[5]  = { UNIT_ID,0xc2,0xc2,0xc2,0xc2};
 //boolean role;                                    // The main role variable, holds the current role identifier
 //boolean role_ping_out = 1, role_pong_back = 0;   // The two different roles.
 unsigned long Count=0;
+
+
+
+#define        WD_CALIB_COUNT   720
+unsigned short WDCalibrationCycle=0;
 
 
 void StopRadio()
@@ -124,7 +129,7 @@ void StartRadio()
   radio.setPayloadSize(32);
   radio.setChannel(0x4e);
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  radio.setRetries(7,3);   // Max delay between retries & number of retries
+  radio.setRetries(7,4);   // Max delay between retries & number of retries
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
   radio.maskIRQ(true,true,false);
@@ -143,20 +148,20 @@ void setup() {
   
   Serial.begin(57600);
   printf_begin();
-  printf("\n\rRF24/examples/GettingStarted/\n\r");
-  printf("*** PRESS 'T' to begin transmitting to the other node\n\r");
+  printf("\n\rRF24 DHT22");
 
   StartRadio();
   radio.stopListening();
   radio.printDetails();                   // Dump the configuration of the rf unit for debugging
   radio.startListening();
+   // disable calibration interval by setting modulus to
+  sleep.setCalibrationInterval(1);
 }
 
 
 
+enum cycleMode {ModeInit, ModeListen, ModeReadSensor,ModeWriteData, ModeWait};
 
-
-enum cycleMode {ModeInit,ModeListen,ModeWriteData,ModeWait};
 
 cycleMode cycle= ModeInit;
 
@@ -233,17 +238,23 @@ bool readSensor(void)
 
   // Wait 2 sec
 //  delay(2000);
-   sleep.pwrDownMode();
-   sleep.sleepDelay(2000);
+  if(WDCalibrationCycle ==0)
+    sleep.setCalibrationInterval(2);  // enable watch dog calibration one every 2 sleep
+  WDCalibrationCycle++;
+  WDCalibrationCycle %= WD_CALIB_COUNT;  //modulus 720 count (half day) on every minutes 
+  sleep.pwrDownMode();
+  sleep.sleepDelay(2000);
+
 
   // Now let's read the sensor twice
   // since the first one will be bad
-  
+  // ok let's check if we need to calibrate the watch dog timer
   DHT.read(DHT_PIN);
 //  delay(1000);
    sleep.pwrDownMode();
    sleep.sleepDelay(1000);
-
+   sleep.setCalibrationInterval(1);
+   
   int rcode = DHT.read(DHT_PIN);
   
   // power off DHT22
@@ -320,7 +331,10 @@ unsigned long deltaTime;
        radio.read( &RcvData, rcv_size);
 
        if (RcvData.header != '*')
-         return;
+        {
+          cycle = ModeWriteData;
+          return;
+        }
        Serial.print("Received after ");
        Serial.print((millis() - startTimeOnListen) / 1000.0);
        Serial.print(" sec\n");
@@ -335,15 +349,15 @@ unsigned long deltaTime;
        #ifdef DISABLE_SLEEP
        delay(200);
        #endif
-       nextTimeOnTimeOut = RcvData.nextTimeOnTimeOut;
        waitTimeOnListen = 1;
-        if(RcvData.nextTimeReading > 50)
+       nextTimeOnTimeOut = RcvData.nextTimeOnTimeOut;
+        if(RcvData.nextTimeReading > 30)
           { 
-           sleepTime =  RcvData.nextTimeReading*100 - 5000UL;
+           sleepTime =  RcvData.nextTimeReading*100 - 3000UL;
            cycle = ModeWait;
           }
           else
-           cycle = ModeWriteData;
+           cycle = ModeReadSensor;
       }
      else
      {
@@ -374,24 +388,14 @@ unsigned long deltaTime;
        StopRadio();
        sleep.pwrDownMode();
        sleep.sleepDelay(sleepTime);
-       cycle = ModeWriteData;
+       cycle = ModeReadSensor;
      }
    
-   
-   if(cycle==ModeWriteData)
-    {
-      
-    
-     Txmdata.stampTime=RcvData.currentTime;
-     Txmdata.header='*';
-     Txmdata.structSize= sizeof(TxmDHT22PacketStruct);
-     Txmdata.structType=STRUCT_TYPE_DHT22_DATA;
-     Txmdata.txmUnitId = UNIT_ID;
-     Txmdata.stampTime=RcvData.currentTime + (deltaTime / 1000);
-     Txmdata.Status = gotTimeOut ? STATUS_TIME_OUT : 0;
-     Txmdata.temperature=32767;
+   if(cycle== ModeReadSensor)
+   {
+     Txmdata.temperature = 32767;
      Txmdata.humidity=32767;
-     Txmdata.voltageA2D=readVcc();
+     Txmdata.Status  = gotTimeOut ? STATUS_TIME_OUT : 0 ;
      
 
      if(readSensor())
@@ -400,6 +404,19 @@ unsigned long deltaTime;
          Txmdata.humidity = (short) floor(DHT.humidity);
          Txmdata.Status |=  STATUS_DATA_VALID;
        }
+       
+      cycle = ModeWriteData; 
+   }   
+   
+   if(cycle==ModeWriteData)
+    {
+     Txmdata.stampTime=RcvData.currentTime;
+     Txmdata.header='*';
+     Txmdata.structSize= sizeof(TxmDHT22PacketStruct);
+     Txmdata.structType=STRUCT_TYPE_DHT22_DATA;
+     Txmdata.txmUnitId = UNIT_ID;
+     Txmdata.stampTime=RcvData.currentTime + (deltaTime / 1000);
+     Txmdata.voltageA2D=readVcc();
       
      StartRadio(); 
      radio.writeAckPayload(1,&Txmdata,sizeof(TxmDHT22PacketStruct));
