@@ -26,3 +26,5 @@ Needed library
 
 And for nRF24Reader.py
  - https://github.com/BLavery/lib_nrf24.git
+*** please add SPI clock speed in the function begin if the nRf24L01 doesn't work
+    self.spidev.max_speed_hz=8000000
