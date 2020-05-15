@@ -70,14 +70,14 @@ def on_MQTT_Message(client,userdata,msg):
   packet += chr(0)
   packet += chr(0)
   packet += chr(int(items[1]))
-  packet += chr(int(items[2]))  
+  packet += chr(int(items[2]))
   lock.acquire()
   radio.openWritingPipe([0xc2,0xc2,0xc2,0xc2,0xc7])
   radio.write(packet)
   if radio.isAckPayloadAvailable():
     in_buffer=[]
     radio.read(in_buffer,radio.getDynamicPayloadSize())
-  lock.release()  
+  lock.release()
 
 
 client = paho.Client('RFUnit2')
@@ -247,10 +247,10 @@ class RF_Device:
         Analog.timeOut = ((self.rdata[4] & 2) ==2)
         Analog.time = self.rdata[5]
         Analog.voltage = self.rdata[6]/1000.0
-        Analog.Analog0 = self.rdata[7]
-        Analog.Analog1 = self.rdata[8]
-        Analog.Analog2 = self.rdata[9]
-        Analog.Analog3 = self.rdata[10]
+        Analog.Analog0 = Analog.voltage * self.rdata[7] / 1023.0
+        Analog.Analog1 = Analog.voltage * self.rdata[8] / 1023.0
+        Analog.Analog2 = Analog.voltage * self.rdata[9] / 1023.0
+        Analog.Analog3 = Analog.voltage * self.rdata[10] / 1023.0
         return Analog
      except:
         return None
@@ -370,7 +370,7 @@ class RF_Device:
              if probe != None:
                if probe.valid:
                  setLedGreen(True)
-                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - A0:{} A1:{} A2:{} A3:{}".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.Analog0,probe.Analog1, probe.Analog2,probe.Analog3))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - A0:{:.3f} A1:{:.3f} A2:{:.3f} A3:{:.3f}".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.Analog0,probe.Analog1, probe.Analog2,probe.Analog3))
                  self.publishValue("Analog0",probe.Analog0)
                  self.publishValue("Analog1",probe.Analog1)
                  self.publishValue("Analog2",probe.Analog2)
