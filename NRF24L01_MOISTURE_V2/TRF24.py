@@ -4,7 +4,6 @@
 # Example program to send packets to the radio link
 #
 
-
 import RPi.GPIO as GPIO
 GPIO.setmode(GPIO.BCM)
 from lib_nrf24 import NRF24
@@ -17,6 +16,8 @@ from struct import *
 import paho.mqtt.client as paho
 from threading import Lock
 
+
+Debug=False
 
 LedR = 22
 LedG = 23
@@ -49,6 +50,7 @@ STRUCT_TYPE_DS18B20=3
 STRUCT_TYPE_MAX6675=4
 STRUCT_TYPE_DIGITAL_OUTPUT=5
 STRUCT_TYPE_ANALOG=6
+STRUCT_TYPE_MOISTURE=7
 
 
 lock = Lock()  #OnMQTTMessage could send something than we need to sync transmitter
@@ -79,8 +81,8 @@ def on_MQTT_Message(client,userdata,msg):
     radio.read(in_buffer,radio.getDynamicPayloadSize())
   lock.release()
 
-
-client = paho.Client('RFUnit2')
+client=None
+client = paho.Client('RFUnitMoist')
 client.on_message = on_MQTT_Message
 client.connect('10.11.12.192')
 client.subscribe("RF_OUT")
@@ -94,7 +96,7 @@ class Logger(object):
   def __init__(self, filename="RFLog.txt"):
     self.terminal = sys.stdout
     self.log = open(filename, "a")
-    self.LastPing = 0
+    self.LastPing= 0
 
   def write(self, message):
     self.terminal.write(message)
@@ -137,9 +139,18 @@ class AnalogData:
     valid=False
     timeOut=False
 
+class MoistureData:
+    time = None
+    Analog0 = 0
+    Analog1 = 0
+    Frequency = 0
+    voltage=0
+    valid=False
+    timeOut=False
+
 
 class RF_Device:
-  def __init__(self, deviceAddress,mqtt=None,topic="RF_DATA", timeInterval=60):
+  def __init__(self, deviceAddress,timeInterval=60,mqtt=None,topic="RF_DATA"):
     self.mqtt=mqtt
     self.mqttTopic=topic
     self.deviceAddress=deviceAddress
@@ -152,18 +163,20 @@ class RF_Device:
     self.timeOffsetAdjustment=1.8
     self.timeOutFlag=True
     self.NoAdjustmentOnNext=True
-    self.lastPing= 0
+    self.lastPingData= 0
+    self.lastPing = 0 
     self.gotDataFlag= False
 
   def publish(self,packet):
     if self.mqtt != None:
       self.mqtt.publish(self.mqttTopic,packet)
-    print(packet)
+    print("publish "+ self.mqttTopic + "  msg:" + packet)
 
   def publishValue(self,id,packet):
-     if self.mqtt !=None:
-       buffer = '{:02X}'.format(self.deviceAddress[4])
-       self.mqtt.publish(self.mqttTopic+"/"+id+"/"+buffer,packet,retain=True)
+    buffer = '{:02X}'.format(self.deviceAddress[4])
+    if self.mqtt !=None:
+       self.mqtt.publish(self.mqttTopic+"/"+buffer+"/"+id,packet,retain=True)
+    print("publish "+ self.mqttTopic +"/"+buffer+"/"+id+"  msg:" + packet)
 
 
   def isScheduleUp(self):
@@ -171,15 +184,20 @@ class RF_Device:
 
    now = time.time()
 
-   # Is the sensor on Timeout
+   if (now - self.lastPing)>2.0:
+     return True
+
+#  Is the sensor on Timeout
    if self.timeOutFlag :
-     #then we will scan for it every 0.5 second until we got an aswer
-     while (self.targetConnectionTime + self.timeInterval) < now:
-        self.targetConnectionTime+= self.timeInterval
-     return  ((now - self.lastPing) > 0.33)
+      return False
+#      return  (now - self.lastPing)>0.5
+#     #then we will scan for it every 0.5 second until we got an aswer
+#     while (self.targetConnectionTime + self.timeInterval) < now:
+#        self.targetConnectionTime+= self.timeInterval
+#     return  ((now - self.lastPingData) > 0.33)
 
    # Are we after the target time
-   if now > (self.targetConnectionTime + self.postConnectionDelay):
+   if now > (self.targetConnectionTime + ( self.postConnectionDelay * self.timeInterval / 60.0)):
      #did we received the data
      if self.gotDataFlag:
        self.gotDataFlag=False
@@ -255,6 +273,23 @@ class RF_Device:
      except:
         return None
 
+  def unpackMoistureData(self , buffer):
+     Moisture = MoistureData
+     if len(buffer) != 19:
+         return None
+     try:
+        self.rdata = unpack('<sBBBBLHHHL',''.join(map(chr,buffer)))
+        Moisture.valid = ((self.rdata[4] & 1) == 1)
+        Moisture.timeOut = ((self.rdata[4] & 2) ==2)
+        Moisture.time = self.rdata[5]
+        Moisture.voltage = self.rdata[6]/1000.0
+        Moisture.Analog0 = Moisture.voltage * self.rdata[7] / 1023.0
+        Moisture.Analog1 = Moisture.voltage * self.rdata[8] / 1023.0
+        Moisture.Frequency = self.rdata[9]
+        return Moisture
+     except:
+        return None
+
 
   def unpackDS18B20Data(self , buffer):
      ds18b20 =  DS18B20Data
@@ -291,9 +326,16 @@ class RF_Device:
      except:
         return None
 
-  def getData(self):
 
-    self.lastPing = time.time();
+  def printhex(self, data):
+    for i in data:
+     print hex(i),
+
+
+  def getData(self):
+    if Debug:
+       print("Get data {} {}".format(time.ctime(),self.deviceAddress))
+    self.lastPingData = time.time();
     #buildpacket
     packet = '*'
     packet += chr(10)  #get packet size
@@ -301,7 +343,6 @@ class RF_Device:
     packet += chr(0)   #0 mean master
     packet += pack('<L', numpy.uint32(time.time()))  #get current time
     #calculate next time sampling
-
     stepNextTime = self.targetConnectionTime - time.time() + self.timeOffsetAdjustment + self.timeInterval
 
     if stepNextTime > (2 * self.timeInterval):
@@ -314,6 +355,9 @@ class RF_Device:
 
 
     stepu16 = numpy.uint16((stepNextTime) * 10)
+    if Debug:
+       print("time offset : {}   time interval: {} nextTime: {} stepU16: {}".format(self.timeOffsetAdjustment, self.timeInterval,stepNextTime,stepu16))
+
 
     packet += pack('<H', stepu16)  #get next time reading
     packet += pack('<h', numpy.uint16(60))
@@ -328,6 +372,9 @@ class RF_Device:
     if radio.isAckPayloadAvailable():
       in_buffer=[]
       radio.read(in_buffer,radio.getDynamicPayloadSize())
+      if Debug:
+        print "got something -> ",
+        self.printhex(in_buffer)
       validFlag= False
       if len(in_buffer)>4:
          # check first four bytes
@@ -348,6 +395,7 @@ class RF_Device:
                  self.publish("Sensor {} D:{:.1f} O:{:.1f}  - {} VCC:{}V - DHT22   T:{:.2f} C H:{} %".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature,probe.humidity))
                  self.publishValue("DHT22/Temp",probe.temperature)
                  self.publishValue("DHT22/Hum",probe.humidity)
+                 self.publishValue("BatteryV","{:.3f}".format(probe.voltage))
                  setLedGreen(False)
                else:
                  self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DHT22   Unable to read".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
@@ -360,6 +408,7 @@ class RF_Device:
                  setLedGreen(True)
                  self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 T:{} C".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.temperature))
                  self.publishValue("DS18B20",probe.temperature)
+                 self.publishValue("BatteryV","{:.3f}".format(probe.voltage))
                  setLedGreen(False)
                else:
                  self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
@@ -371,14 +420,33 @@ class RF_Device:
                if probe.valid:
                  setLedGreen(True)
                  self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - A0:{:.3f} A1:{:.3f} A2:{:.3f} A3:{:.3f}".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.Analog0,probe.Analog1, probe.Analog2,probe.Analog3))
-                 self.publishValue("Analog0",probe.Analog0)
-                 self.publishValue("Analog1",probe.Analog1)
-                 self.publishValue("Analog2",probe.Analog2)
-                 self.publishValue("Analog3",probe.Analog3)
+                 self.publishValue("Analog/0","{:.3f}".format(probe.Analog0))
+                 self.publishValue("Analog/1","{:.3f}".format(probe.Analog1))
+                 self.publishValue("Analog/2","{:.3f}".format(probe.Analog2))
+                 self.publishValue("Analog/3","{:.3f}".format(probe.Analog3))
+                 self.publishValue("BatteryV","{:.3f}".format(probe.voltage))
                  setLedGreen(False)
                else:
-                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - DS18B20 Unable to read DS18B20 sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - Unable to read Analog sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
                validFlag=True
+
+           if in_buffer[2] == STRUCT_TYPE_MOISTURE:
+             if Debug:
+               print "Got moisture"
+             probe = self.unpackMoistureData(in_buffer)
+             if probe != None:
+               if probe.valid:
+                 setLedGreen(True)
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - MOIST A0:{:.3f} A1:{:.3f} F:{:6d}".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage,probe.Analog0,probe.Analog1, probe.Frequency))
+                 self.publishValue("Moist/Analog/0","{:.3f}".format(probe.Analog0))
+                 self.publishValue("Moist/Analog/1","{:.3f}".format(probe.Analog1))
+                 self.publishValue("Moist/Frequency","{:8d}".format(probe.Frequency))
+                 self.publishValue("BatteryV","{:.3f}".format(probe.voltage))
+                 setLedGreen(False)
+               else:
+                 self.publish("Sensor {} D:{:.1f} O:{:.1f} - {} VCC:{}V - Unable to read Moisture sensor".format(self.readSensorAddress(),timeOffset,self.timeOffsetAdjustment,time.ctime(),probe.voltage))
+               validFlag=True
+
 
 
 
@@ -418,12 +486,8 @@ masterAddress = [0xe7, 0xe7, 0xe7, 0xe7, 0xe7]
 
 
 device = [
-#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc3],60),
-#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc4],60),
-#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc5],60),
-#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc8],60),
-#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc6],60)
-	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb0],60)
+	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb1],300),
+	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb5],300)
          ]
 
 
@@ -440,9 +504,9 @@ radio.begin(0, 18)
 time.sleep(1)
 radio.setRetries(7,4)
 radio.setPayloadSize(32)
-radio.setChannel(72)
+radio.setChannel(1)
 
-radio.setDataRate(NRF24.BR_1MBPS)
+radio.setDataRate(NRF24.BR_250KBPS)
 radio.setPALevel(NRF24.PA_MAX)
 radio.setAutoAck(True)
 radio.enableDynamicPayloads()
@@ -462,16 +526,18 @@ try:
  while True:
    for i in  device:
      if i.isScheduleUp():
+        i.lastPing = time.time();
         i.getData()
-        client.loop(timeout=0.05)
-   time.sleep(0.001)
+        if client is not None:
+          client.loop(timeout=0.05)
+     time.sleep(0.05)
 
 
 except KeyboardInterrupt:
     radio.stopListening()
     radio.powerDown()
     client.disconnect()
-    setLedRed(false)
-    setLedGreen(false)
-    setLedBlue(false)
+    setLedRed(False)
+    setLedGreen(False)
+    setLedBlue(False)
     raise
