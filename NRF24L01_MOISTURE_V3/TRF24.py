@@ -547,9 +547,9 @@ device = [
 #	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xc6],60)
 #	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb0],60),
 	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb1],300,clockFrequency=400000),
-#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb5],300,clockFrequency=572000)
+#	  RF_Device([0xc2,0xc2,0xc2,0xc2,0xb5],300,clockFrequency=445000)
          ]
-# Moisture sensor V2.0 pacb is ticker set clock to 572000 instead of 400000
+# Moisture sensor V2.0 pacb is ticker set sensor clock higher
 
 # space each device in time 
 delay=0
