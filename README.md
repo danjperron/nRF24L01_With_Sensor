@@ -1,7 +1,8 @@
 # nRF24L01_With_Sensor
-Read DHT22 sensor via nRF24L01 transmitter with an arduino 
+Read DHT22, DS18B20, MAX6675, Humidity capacitive sensor via nRF24L01 transmitter with an arduino 
 
-Arduino pin out
+Arduino pin out for DHT22
+ 
   
   <pre>
   2   DHT22     DATA with a 4k7 pull-up resistor
@@ -17,12 +18,19 @@ Arduino pin out
   GND nRF24L01  GND p in 1
 </pre>
 
-Needed library
- - https://github.com/maniacbug/RF24
- - https://github.com/n0m1/Sleep_n0m1
+N.B. Pins are specific to the sensor.
+
+
+Needed library 
+ - RF24 by TMRh20 from arduino library
+ - Sleep_n0m1 by Noah Shibley from arduino library
+
+Needed library for specific sensors
  - http://playground.arduino.cc//Main/DHTLib
  - http://www.pjrc.com/teensy/td_libs_OneWire.html
  - http://milesburton.com/Dallas_Temperature_Control_Library
+
+
 
 And for nRF24Reader.py
  - https://github.com/BLavery/lib_nrf24.git
