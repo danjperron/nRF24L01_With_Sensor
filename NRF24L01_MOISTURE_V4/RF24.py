@@ -481,7 +481,7 @@ radio.begin(0, 18)
 time.sleep(1)
 radio.setRetries(7,4)
 radio.setPayloadSize(32)
-radio.setChannel(1)
+radio.setChannel(80)
 
 radio.setDataRate(NRF24.BR_250KBPS)
 radio.setPALevel(NRF24.PA_MAX)
