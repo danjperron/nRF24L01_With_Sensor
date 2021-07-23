@@ -36,3 +36,10 @@ And for nRF24Reader.py
  - https://github.com/BLavery/lib_nrf24.git
 *** please add SPI clock speed in the function begin if the nRf24L01 doesn't work
     self.spidev.max_speed_hz=8000000
+    
+    
+I made some video in French explaining the use of it in my garden
+  - Part 1 https://m.youtube.com/watch?v=X7y6lOSt4
+  - Part 2 https://www.youtube.com/watch?v=79MHdWFCXho
+  - Part 3 Not done yet! Will be about humidity calibration and node red
+  
