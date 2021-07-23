@@ -240,7 +240,7 @@ unsigned char * pt = (unsigned char *) &RcvData;
 
 unsigned char rcvBuffer[32];
 unsigned short nextTimeOnTimeOut = 300;
-const unsigned short waitTimeOnListen = 5;
+const unsigned short waitTimeOnListen = 10;
 unsigned long  startTimeOnListen;
 
 void PrintHex(uint8_t *data, uint8_t length) // prints 16-bit data in hex with leading zeroes
