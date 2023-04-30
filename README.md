@@ -28,7 +28,8 @@ Needed library
 Needed library for specific sensors
  <s>- http://playground.arduino.cc//Main/DHTLib</s> Check for DHTlib  in library manager
  - http://www.pjrc.com/teensy/td_libs_OneWire.html
- - http://milesburton.com/Dallas_Temperature_Control_Library
+<s>- http://milesburton.com/Dallas_Temperature_Control_Library</s>
+- https://github.com/milesburton/Arduino-Temperature-Control-Library
 
 
 
