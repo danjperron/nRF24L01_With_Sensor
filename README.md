@@ -26,7 +26,7 @@ Needed library
  - Sleep_n0m1 by Noah Shibley from arduino library
 
 Needed library for specific sensors
- - http://playground.arduino.cc//Main/DHTLib
+ <s>- http://playground.arduino.cc//Main/DHTLib</s> Check for DHTlib  in library manager
  - http://www.pjrc.com/teensy/td_libs_OneWire.html
  - http://milesburton.com/Dallas_Temperature_Control_Library
 
@@ -39,7 +39,7 @@ And for nRF24Reader.py
     
     
 I made some video in French explaining the use of it in my garden
-  - Part 1 https://m.youtube.com/watch?v=X7y6lOSt4
+  - Part 1 https://www.youtube.com/watch?v=X7y6lOSt4_s
   - Part 2 https://www.youtube.com/watch?v=79MHdWFCXho
   - Part 3 Not done yet! Will be about humidity calibration and node red
   
